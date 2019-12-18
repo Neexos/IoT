@@ -1,16 +1,39 @@
 # encoding: utf-8
 from Crypto.PublicKey import RSA
-import requests, time
+import requests, time, serial
+
 
 #---------- VARS --------------
-key = RSA.generate(1024)  # generation du couple de clefs
-pubKey = key.publickey()  # clef publique
-privateKey = key  # cle privee
+
 url = "https://cpefiresimulation.azurewebsites.net/get"
 myRequest = requests.get(url)
+
+SERIALPORT = "/dev/ttyUSB0"
+BAUDRATE = 115200
+ser = serial.Serial()
+
 strt = time.time()
-lystTest = '[["1","2","3"],["4","5","6"],["7","8","9"]]'
+
+
 #--------- FUNCTIONS ----------
+def initKeys():
+    global pubKey
+    global privateKey
+    try:
+        with open('publicClient.pem', 'r') as fk:
+            pub = fk.read()
+            fk.close()
+    except:
+        print("erreur lors de la lecture du fichier 'publicClient.pem'\n")
+    try:
+        with open('privateSimu.pem', 'r') as fk:
+            priv = fk.read()
+            fk.close()
+    except:
+        print("erreur lors de la lecture du fichier 'privateSimu.pem'\n")
+    pubKey = RSA.importKey(pub)
+    privateKey = RSA.importKey(priv)
+
 def initUART(state):
     if state == 'open':
         # ser = serial.Serial(SERIALPORT, BAUDRATE)
@@ -33,11 +56,12 @@ def initUART(state):
         except serial.SerialException:
             print("Serial {} port not available".format(SERIALPORT))
             exit()
-    elif state == close:
+    elif state == 'close':
         ser.close()
 
+
 def sendUARTMessage(msg):
-    ser.write(msg.encode())
+    ser.write(msg)
 
 def encryptData(myString):
     encrypted = pubKey.encrypt(myString, 32)
@@ -55,9 +79,24 @@ def formatList(lst):
         lst.remove(",")
     return lst
 
-def main(lst):
+def formatPacket(myStr, sizePacket=32):
+    lstPackets = []
+    nbPacket = len(myStr)/sizePacket
+    for i in range(nbPacket):
+        lstPackets.append(myStr[:sizePacket])
+        myStr = myStr[sizePacket:]
+    return lstPackets
+
+def formatRawData(myStr, size=128):
+    lst = []
+    nbSplit = len(myStr)/size
+    for i in range(nbSplit):
+        lst.append(myStr[:size])
+        myStr = myStr[size:]
+    return lst
+
+def main():
     formattedStr = ""
-    # myList = formatList(lystTest)
     if myRequest.status_code == 200:
         data = getData(myRequest)
         data = formatList(data)
@@ -66,35 +105,64 @@ def main(lst):
             if(count%3 != 0):
                 formattedStr += data[x] + ','
             else:
-                formattedStr += data[x] + ';\t'
+                formattedStr += data[x] + ';'
             count += 1
-        '''
-        for x in range(len(myList)):
-            if(count%3 != 0):
-                formattedStr += myList[x] + ','
-            else:
-                formattedStr += myList[x] + ';\t'
-            count += 1
-        '''
-        print(formattedStr)
-        encryptedData = encryptData(formattedStr)
-        decrypted = privateKey.decrypt(encryptedData)
+        # On peut prendre jusqu'à 21 triplets dans cette liste pour crypter
+        listSplittedPointVirgule = formattedStr.split(';')
+        print(listSplittedPointVirgule)
+        buffer = []
+        splittedStr = ""
+        for z in range(21):
+            try:
+                buffer.append(listSplittedPointVirgule[z])
+            except:
+                print("index out of range")
+        for triplet in buffer:
+            splittedStr += triplet
+        print(len(splittedStr))
+        encryptedData = encryptData(str(splittedStr))
         print(encryptedData)
-        print(len(encryptedData[0]))
-        print('\n')
-        print(decrypted)
+'''
+        # TODO: spliter la formattedStr sinon trop long pour crypter (128 carac max)
+        if (not(len(formattedStr) <= 128)):
+            rawData = formatRawData(formattedStr)
+            for x in range(len(rawData)):
+                encryptedData = encryptData(str(rawData[x]))
+                print(str(encryptedData[0]))
+                if ( not(len(encryptedData[0]) <= 60) ):
+                    packets = formatPacket(str(encryptedData[0]))
+                    initUART('open')
+                    for i in range(len(packets)):
+                        sendUARTMessage(packets[i])
+                    initUART('close')
+                else:
+                    initUART('open')
+                    sendUARTMessage(encryptedData)
+                    initUART('close')
+        else:
+            encryptedData = encryptData(str(formattedStr))
+            if ( not(len(encryptedData[0]) <= 60) ):
+                packets = formatPacket(str(encryptedData[0]))
+                initUART('open')
+                for i in range(len(packets)):
+                    sendUARTMessage(packets[i])
+                initUART('close')
+            else:
+                initUART('open')
+                sendUARTMessage(encryptedData)
+                initUART('close')
     else:
         print("Impossible de récupérer des données du serveur, code http: " + str(myRequest.status_code))
         time.sleep(2)
-
-#-------- WHILE TRUE
+'''
+#-------- WHILE TRUE ---------
+initKeys()
 while(1):
-    main(lystTest)
+    main()
     time.sleep(3)
 
 '''
 encryptedData = pubKey.encrypt(data, 32)
-
 decrypted = privateKey.decrypt(encryptedData)
 print(encryptedData)
 print(len(encryptedData[0]))
