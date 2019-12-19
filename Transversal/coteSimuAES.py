@@ -78,6 +78,7 @@ def main():
         listSplittedPointVirgule.pop()  # pour enlever le dernier element (qui est vide)
         initUART('open')
         for triplet in listSplittedPointVirgule:
+            print(len(triplet))
             if ( len(triplet) == 30):
                 encryptedData = encryptData(str(triplet))
                 sendUARTMessage(encryptedData)
@@ -85,6 +86,7 @@ def main():
                 ret = formatDataToSend(str(triplet))
                 encryptedData = encryptData(str(ret))
                 sendUARTMessage(encryptedData)
+            time.sleep(2)
         initUART('close')
 
 #-------- WHILE TRUE ---------

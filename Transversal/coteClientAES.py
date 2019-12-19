@@ -2,8 +2,7 @@
 import xxtea, requests, serial, time
 
 #---------- VARS --------------
-url = "https://cpefiresimulation.azurewebsites.net/get"
-myRequest = requests.get(url)
+url = "https://emergencymanager.azurewebsites.net/fire/send"
 
 SERIALPORT = "/dev/ttyUSB1"
 BAUDRATE = 115200
@@ -53,4 +52,6 @@ while(1):
     finalRet = parseX(decrypted)
     print("Feu déclenché: ")
     print(finalRet)
+    myRequest = requests.post(url, data=finalRet)
+    print(myRequest.status_code)
     initUART('close')
