@@ -1,36 +1,19 @@
 # encoding: utf-8
-from Crypto.PublicKey import RSA
-import requests, serial
+import xxtea, requests, serial, time
 
+#---------- VARS --------------
+url = "https://cpefiresimulation.azurewebsites.net/get"
+myRequest = requests.get(url)
 
-url = "https://cpefiresimulation.azurewebsites.net/send"
 SERIALPORT = "/dev/ttyUSB1"
 BAUDRATE = 115200
 ser = serial.Serial()
-'''
-myRequest = requests.post(url, data="15,12,6;1,2,5")
-print(myRequest.status_code)
-print(myRequest.text)
-'''
 
-def initKeys():
-    global pubKey
-    global privateKey
-    try:
-        with open('publicSimu.pem', 'r') as fk:
-            pub = fk.read()
-            fk.close()
-    except:
-        print("erreur lors de la lecture du fichier 'publicSimu.pem'\n")
-    try:
-        with open('privateClient.pem', 'r') as fk:
-            priv = fk.read()
-            fk.close()
-    except:
-        print("erreur lors de la lecture du fichier 'privateClient.pem'\n")
-    pubKey = RSA.importKey(pub)
-    privateKey = RSA.importKey(priv)
+with open("keyFile.pem", "r") as fk:
+    key = fk.readline()
+    fk.close()
 
+#---------- FUNCTIONS --------------
 def initUART(state):
     if state == 'open':
         # ser = serial.Serial(SERIALPORT, BAUDRATE)
@@ -57,23 +40,17 @@ def initUART(state):
         ser.close()
 
 def readUARTMessage():
-    ret = ser.read(64) # lis 64 octets
-    return str(ret)
+    ret = ser.readline() # lis X octets
+    return ret[:-1]      # on enleve le caractere de retour a la ligne pour decrypter 
 
-
-initKeys()
+def parseX(myStr):
+    return myStr.replace("x", "")
+#---------- WHILE TRUE --------------
 while(1):
     initUART('open')
     encryptedData = readUARTMessage()
-    decrypted = privateKey.decrypt(encryptedData)
-    print(decrypted)
+    decrypted = xxtea.decrypt(encryptedData, key)
+    finalRet = parseX(decrypted)
+    print("Feu déclenché: ")
+    print(finalRet)
     initUART('close')
-
-'''
-conn = httplib.HTTPConnection(url, 80)
-conn.request("POST", "45.2,55,8;")
-response = conn.getresponse()
-print response.status, response.reason
-data = response.read()
-conn.close()
-'''

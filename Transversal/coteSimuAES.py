@@ -1,10 +1,7 @@
 # encoding: utf-8
-from Crypto.PublicKey import RSA
-import requests, time, serial
-
+import xxtea, requests, serial, time
 
 #---------- VARS --------------
-
 url = "https://cpefiresimulation.azurewebsites.net/get"
 myRequest = requests.get(url)
 
@@ -12,28 +9,11 @@ SERIALPORT = "/dev/ttyUSB0"
 BAUDRATE = 115200
 ser = serial.Serial()
 
-strt = time.time()
+with open("keyFile.pem", "r") as fk:
+    key = fk.readline()
+    fk.close()
 
-
-#--------- FUNCTIONS ----------
-def initKeys():
-    global pubKey
-    global privateKey
-    try:
-        with open('publicClient.pem', 'r') as fk:
-            pub = fk.read()
-            fk.close()
-    except:
-        print("erreur lors de la lecture du fichier 'publicClient.pem'\n")
-    try:
-        with open('privateSimu.pem', 'r') as fk:
-            priv = fk.read()
-            fk.close()
-    except:
-        print("erreur lors de la lecture du fichier 'privateSimu.pem'\n")
-    pubKey = RSA.importKey(pub)
-    privateKey = RSA.importKey(priv)
-
+#---------- FUNCTIONS --------------
 def initUART(state):
     if state == 'open':
         # ser = serial.Serial(SERIALPORT, BAUDRATE)
@@ -59,16 +39,8 @@ def initUART(state):
     elif state == 'close':
         ser.close()
 
-
 def sendUARTMessage(msg):
     ser.write(msg)
-
-def encryptData(myString):
-    encrypted = pubKey.encrypt(myString, 32)
-    return encrypted
-
-def getData(req):
-    return req.text
 
 def formatList(lst):
     lst = lst[1:-1]                             # On enlève les [] de debut/fin
@@ -79,26 +51,21 @@ def formatList(lst):
         lst.remove(",")
     return lst
 
-def formatPacket(myStr, sizePacket=32):
-    lstPackets = []
-    nbPacket = len(myStr)/sizePacket
-    for i in range(nbPacket):
-        lstPackets.append(myStr[:sizePacket])
-        myStr = myStr[sizePacket:]
-    return lstPackets
+def encryptData(text):
+    encrypted = xxtea.encrypt(text, key)
+    return encrypted
 
-def formatRawData(myStr, size=128):
-    lst = []
-    nbSplit = len(myStr)/size
-    for i in range(nbSplit):
-        lst.append(myStr[:size])
-        myStr = myStr[size:]
-    return lst
+def formatDataToSend(triplet):
+    ret = triplet
+    length = len(triplet)
+    for i in range(30-length):
+        ret += "x"
+    return ret
 
 def main():
     formattedStr = ""
     if myRequest.status_code == 200:
-        data = getData(myRequest)
+        data = myRequest.text
         data = formatList(data)
         count = 1
         for x in range(len(data)):
@@ -107,27 +74,20 @@ def main():
             else:
                 formattedStr += data[x] + ';'
             count += 1
-        # On peut prendre jusqu'à 21 triplets dans cette liste pour crypter
         listSplittedPointVirgule = formattedStr.split(';')
-        #print("ma liste :")
-        #print(listSplittedPointVirgule)
+        listSplittedPointVirgule.pop()  # pour enlever le dernier element (qui est vide)
+        initUART('open')
         for triplet in listSplittedPointVirgule:
-            encryptedData = encryptData(str(triplet))
-            print(len(encryptedData[0]))
+            if ( len(triplet) == 30):
+                encryptedData = encryptData(str(triplet))
+                sendUARTMessage(encryptedData)
+            else:
+                ret = formatDataToSend(str(triplet))
+                encryptedData = encryptData(str(ret))
+                sendUARTMessage(encryptedData)
+        initUART('close')
 
 #-------- WHILE TRUE ---------
-initKeys()
 while(1):
     main()
     time.sleep(3)
-
-'''
-encryptedData = pubKey.encrypt(data, 32)
-decrypted = privateKey.decrypt(encryptedData)
-print(encryptedData)
-print(len(encryptedData[0]))
-print('\n')
-print(decrypted)
-end = time.time()
-print("----- Execution time: " + str(end-strt) + " -----")
-'''
