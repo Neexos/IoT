@@ -1,5 +1,5 @@
 # encoding: utf-8
-import xxtea, requests, serial, time
+import xxtea, requests, serial, time, sys
 
 #---------- VARS --------------
 url = "https://cpefiresimulation.azurewebsites.net/get"
@@ -12,6 +12,8 @@ ser = serial.Serial()
 with open("keyFile.pem", "r") as fk:
     key = fk.readline()
     fk.close()
+
+
 
 #---------- FUNCTIONS --------------
 def initUART(state):
@@ -58,7 +60,7 @@ def encryptData(text):
 def formatDataToSend(triplet):
     ret = triplet
     length = len(triplet)
-    for i in range(30-length):
+    for i in range(36-length):
         ret += "x"
     return ret
 
@@ -76,20 +78,25 @@ def main():
             count += 1
         listSplittedPointVirgule = formattedStr.split(';')
         listSplittedPointVirgule.pop()  # pour enlever le dernier element (qui est vide)
-        initUART('open')
         for triplet in listSplittedPointVirgule:
-            print(len(triplet))
-            if ( len(triplet) == 30):
-                encryptedData = encryptData(str(triplet))
-                sendUARTMessage(encryptedData)
-            else:
-                ret = formatDataToSend(str(triplet))
-                encryptedData = encryptData(str(ret))
-                sendUARTMessage(encryptedData)
-            time.sleep(2)
-        initUART('close')
+            ret = formatDataToSend(str(triplet))
+            #encryptedData = encryptData(ret)
+            print("envois de: " + ret)
+            print(len(ret))
+            sendUARTMessage(ret)
+            '''for char in encryptedData:
+                print char.encode('hex'),
+            print('')
+            '''
+            print(ser.read(36))
+            #time.sleep(0.5)
 
 #-------- WHILE TRUE ---------
+initUART('open')
 while(1):
-    main()
-    time.sleep(3)
+    try:
+        main()
+    except KeyboardInterrupt:
+        initUART('close')
+        sys.exit()
+

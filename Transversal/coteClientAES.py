@@ -1,5 +1,10 @@
 # encoding: utf-8
-import xxtea, requests, serial, time
+import xxtea, requests, serial, time, sys
+from influxdb import InfluxDBClient
+
+'''
+TODO: voir les tailles buffers dans le C, vérifier envoie/Récep
+'''
 
 #---------- VARS --------------
 url = "https://emergencymanager.azurewebsites.net/fire/send"
@@ -39,19 +44,33 @@ def initUART(state):
         ser.close()
 
 def readUARTMessage():
-    ret = ser.readline() # lis X octets
-    return ret[:-1]      # on enleve le caractere de retour a la ligne pour decrypter 
+    ret = ser.read(36) # lis X octets
+    return ret    # on enleve le caractere de retour a la ligne pour decrypter 
 
 def parseX(myStr):
     return myStr.replace("x", "")
-#---------- WHILE TRUE --------------
-while(1):
-    initUART('open')
+
+def main():
     encryptedData = readUARTMessage()
-    decrypted = xxtea.decrypt(encryptedData, key)
-    finalRet = parseX(decrypted)
-    print("Feu déclenché: ")
-    print(finalRet)
-    myRequest = requests.post(url, data=finalRet)
-    print(myRequest.status_code)
-    initUART('close')
+    '''decrypted = xxtea.decrypt(encryptedData, key)
+    for char in encryptedData:
+        print char.encode('hex'),
+    print('')'''
+    print("encrypted " + encryptedData)
+    #finalRet = parseX(str(decrypted))
+    if(len(encryptedData) != 0):
+        print("Feu déclenché: ")
+        print(str(encryptedData))
+        print(len(encryptedData))
+        #myRequest = requests.post(url, data=finalRet)
+        #print(myRequest.status_code)
+
+
+#---------- WHILE TRUE --------------
+initUART('open')
+while(1):
+    try:
+        main()
+    except KeyboardInterrupt:
+        initUART('close')
+        sys.exit()
