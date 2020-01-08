@@ -32,6 +32,7 @@
 #include "extdrv/status_led.h"
 #include "drivers/i2c.h"
 
+
 #define MODULE_VERSION	0x03
 #define MODULE_NAME "RF Sub1G - USB"
 
@@ -46,8 +47,8 @@
 #define RF_BUFF_LEN 64
 
 #define SELECTED_FREQ  FREQ_SEL_48MHz
-#define DEVICE_ADDRESS  0xC6 /* Addresses 0x00 and 0xFF are broadcast */
-#define NEIGHBOR_ADDRESS 0xEE /* Address of the associated device */
+#define DEVICE_ADDRESS  0xEE /* Addresses 0x00 and 0xFF are broadcast */
+#define NEIGHBOR_ADDRESS 0xC6 /* Address of the associated device */
 /***************************************************************************** */
 /* Pins configuration */
 /* pins blocks are passed to set_pins() for pins configuration.
@@ -78,8 +79,11 @@ const struct pio status_led_red = LPC_GPIO_0_29;
 
 const struct pio button = LPC_GPIO_0_12; /* ISP button */
 
+volatile uint8_t buffer_to_send[BUFF_LEN];
+volatile uint8_t buffer_UART[BUFF_LEN];
+
 // Message
-struct message 
+struct message
 {
 	uint8_t posX;
 	uint8_t posY;
@@ -87,6 +91,28 @@ struct message
 };
 typedef struct message message;
 
+
+static volatile uint32_t cc_tx = 0;
+static volatile uint8_t cc_tx_buff[RF_BUFF_LEN];
+static volatile uint8_t cc_ptr = 0;
+
+void handle_uart_cmd(uint8_t c)
+{/*
+#ifdef DEBUG
+	uprintf(UART0, "Received command : %c, buffer size: %d.\n\r",c,cc_ptr);
+#endif*/
+	if (cc_ptr < BUFF_LEN)
+	{
+		buffer_to_send[cc_ptr++] = c;
+	} 
+	if (cc_ptr >= BUFF_LEN)
+	{
+		cc_tx = 1;
+		cc_ptr = 0;
+		//memcpy(buffer_to_send, buffer_UART, BUFF_LEN);
+	}
+	
+}
 
 /***************************************************************************** */
 void system_init()
@@ -108,11 +134,11 @@ void system_init()
  * Note : The default one does a simple infinite loop. If the watchdog is deactivated
  * the system will hang.
  */
-void fault_info(const char* name, uint32_t len)
+/*void fault_info(const char* name, uint32_t len)
 {
 	uprintf(UART0, name);
 	while (1);
-}
+}*/
 
 static volatile int check_rx = 0;
 void rf_rx_calback(uint32_t gpio)
@@ -141,13 +167,13 @@ void rf_config(void)
 	set_gpio_callback(rf_rx_calback, &cc1101_gdo0, EDGE_RISING);
     cc1101_set_address(DEVICE_ADDRESS);
 #ifdef DEBUG
-	uprintf(UART0, "CC1101 RF link init done.\n\r");
+	//uprintf(UART0, "CC1101 RF link init done.\n\r");
 #endif
 }
 
 
 void handle_rf_rx_data(void)
-{	
+{
 	uint8_t data[RF_BUFF_LEN];
 	int8_t ret = 0;
 	uint8_t status = 0;
@@ -156,60 +182,78 @@ void handle_rf_rx_data(void)
 	ret = cc1101_receive_packet(data, RF_BUFF_LEN, &status);
 	/* Go back to RX mode */
 	cc1101_enter_rx_mode();
-	if( data[1] == DEVICE_ADDRESS ){
-		//uprintf(UART0, "Message recu : \t");
-		//BOUCLE PARCOURS DATA MESSAGE RECU
-		/*int i;
-		for(i=3;i<39;i++){
-			uprintf(UART0, "%c", data[i]);
-		}*/
-		data[39] = '\0';
-		uprintf(UART0, "%36s", data+3);
-				
-	#ifdef DEBUG
-		uprintf(UART0, "RF: ret:%d, st: %d.\n\r", ret, status);
-		uprintf(UART0, "RF: data lenght: %d.\n\r", data[0]);
-		uprintf(UART0, "RF: dest: %x.\n\r", data[1]);
-		uprintf(UART0, "RF: src: %x.\n\r", data[2]);
-		uprintf(UART0, "RF: message in memory is not visible: %c.\n\r", data[3]);
-	#endif
-	}
-	if (data[1] != DEVICE_ADDRESS){
-		uprintf(UART0, "Bad destination address, data has been rejected.\n\r");
-	}
-	if (data[2] != NEIGHBOR_ADDRESS){
-		uprintf(UART0, "Bad source address, data has been rejected.\n\r");
-	}
-	
+	message msg_data;
+	memcpy(&msg_data,&data[3],sizeof(message));
+
+    /*int i;
+	for(i = 0; (i < data[0] && data[2+i] != '\0'); i++)
+        data[2+i] = data[2+i] - 3;*/
+	/*
+	uprintf(UART0, "{ \"posX\": %d, \"posY\": %d, \"intensity\": %d}\n\r",  
+					msg_data.posX,
+					msg_data.posY,
+					msg_data.intensity);*/
+#ifdef DEBUG
+	/*uprintf(UART0, "RF: ret:%d, st: %d.\n\r", ret, status);
+    uprintf(UART0, "RF: data lenght: %d.\n\r", data[0]);
+    uprintf(UART0, "RF: destination: %x.\n\r", data[1]);*/
+	/* JSON PRINT
+	uprintf(UART0, "{ \"posX\": %d, \"posY\": %d, \"intensity\": %d}\n\r",  
+					msg_data.posX,
+					msg_data.posY,
+					msg_data.intensity);*/
+    /*uprintf(UART0, "RF: message: %c.\n\r", data[2]);*/
+#endif
 }
 
-static volatile uint32_t cc_tx = 0;
-static volatile uint8_t cc_tx_buff[RF_BUFF_LEN];
-static volatile uint8_t cc_ptr = 0;
-
-
+// send data
 static volatile message cc_tx_msg;
+void send_on_rf(void)
+{
+	uint8_t cc_tx_data[BUFF_LEN+3];
+	cc_tx_data[0]=BUFF_LEN+2;
+	cc_tx_data[1]=NEIGHBOR_ADDRESS;
+	cc_tx_data[2]=DEVICE_ADDRESS;
+
+	memcpy(&cc_tx_data[3], buffer_to_send, BUFF_LEN);
+	//uprintf(UART0, "ok");
+	/*int i;
+	for(i=3; i<39;i++){
+		uprintf(UART0, "%c", cc_tx_data[i]);
+	}*/
+	/* Send */
+	if (cc1101_tx_fifo_state() != 0) {
+		cc1101_flush_tx_fifo();
+	}
+	int ret = cc1101_send_packet(cc_tx_data, sizeof(cc_tx_data));
+}
+
+
 
 int main(void)
 {
-	int ret = 0;
 	system_init();
-	uart_on(UART0, 115200, NULL);
-
+	uart_on(UART0, 115200, handle_uart_cmd);
+	
 	ssp_master_on(0, LPC_SSP_FRAME_SPI, 8, 4*1000*1000); /* bus_num, frame_type, data_width, rate */
 	status_led_config(&status_led_green, &status_led_red);
 	
-
+	
 	/* Radio */
 	rf_config();
 
-	uprintf(UART0, "App started and waiting for data...\n\r");
+
+	uprintf(UART0, "App started and waiting for UART data... \n\r");
 
 	while (1) {
 		uint8_t status = 0;
-		
-    	chenillard(250);
-    
+		/* Tell we are alive :) */
+		chenillard(2);
+
+		if (cc_tx == 1) {
+			send_on_rf();
+			cc_tx = 0;
+		}
 		/* Do not leave radio in an unknown or unwated state */
 		do {
 			status = (cc1101_read_status() & CC1101_STATE_MASK);
@@ -228,10 +272,8 @@ int main(void)
 		}
 		if (check_rx == 1) {
 			check_rx = 0;
-			handle_rf_rx_data();
-		}
-
-		
+			//handle_rf_rx_data();
+		}		
 	}
 	return 0;
 }

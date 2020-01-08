@@ -32,9 +32,10 @@ def initUART(state):
         ser.rtscts = False  # disable hardware (RTS/CTS) flow control
         ser.dsrdtr = False  # disable hardware (DSR/DTR) flow control
         # ser.writeTimeout = 0     #timeout for write
-        print ("Starting Up Serial Monitor")
+        
         try:
             ser.open()
+            print ("Starting Up Serial Monitor")
         except serial.SerialException:
             print("Serial {} port not available".format(SERIALPORT))
             exit()
@@ -60,7 +61,7 @@ def encryptData(text):
 def formatDataToSend(triplet):
     ret = triplet
     length = len(triplet)
-    for i in range(36-length):
+    for i in range(30-length):
         ret += "x"
     return ret
 
@@ -80,16 +81,17 @@ def main():
         listSplittedPointVirgule.pop()  # pour enlever le dernier element (qui est vide)
         for triplet in listSplittedPointVirgule:
             ret = formatDataToSend(str(triplet))
-            #encryptedData = encryptData(ret)
-            print("envois de: " + ret)
-            print(len(ret))
-            sendUARTMessage(ret)
+            encryptedData = encryptData(ret)
+            print("envois de: " + encryptedData)
+            print(len(encryptedData))
+            sendUARTMessage(bytes(encryptedData))
             '''for char in encryptedData:
                 print char.encode('hex'),
-            print('')
-            '''
-            print(ser.read(36))
-            #time.sleep(0.5)
+            print('')'''
+            #print(ser.read(36))
+            time.sleep(0.05)
+    else:
+        print("marche pas")
 
 #-------- WHILE TRUE ---------
 initUART('open')

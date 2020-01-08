@@ -51,19 +51,15 @@ def parseX(myStr):
     return myStr.replace("x", "")
 
 def main():
-    encryptedData = readUARTMessage()
-    '''decrypted = xxtea.decrypt(encryptedData, key)
-    for char in encryptedData:
-        print char.encode('hex'),
-    print('')'''
-    print("encrypted " + encryptedData)
-    #finalRet = parseX(str(decrypted))
-    if(len(encryptedData) != 0):
+    encryptedData = bytes(readUARTMessage())
+    decrypted = xxtea.decrypt_utf8(encryptedData, key)
+    finalRet = parseX(str(decrypted))
+    if(len(finalRet) != 0):
         print("Feu déclenché: ")
-        print(str(encryptedData))
-        print(len(encryptedData))
-        #myRequest = requests.post(url, data=finalRet)
-        #print(myRequest.status_code)
+        print(str(finalRet))
+        print(len(finalRet))
+        myRequest = requests.post(url, data=str(finalRet))
+        print(myRequest.status_code)
 
 
 #---------- WHILE TRUE --------------
